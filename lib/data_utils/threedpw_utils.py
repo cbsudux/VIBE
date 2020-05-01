@@ -56,13 +56,12 @@ def read_data(folder, set, debug=False):
 
     model = spin.get_pretrained_hmr()
 
-    if set == 'val': set = 'test'
     sequences = [x.split('.')[0] for x in os.listdir(osp.join(folder, 'sequenceFiles', set))]
 
     J_regressor = None
 
     smpl = SMPL(SMPL_MODEL_DIR, batch_size=1, create_transl=False)
-    if set == 'test':
+    if set == 'test' or set == 'validation':
         J_regressor = torch.from_numpy(np.load(osp.join(VIBE_DATA_DIR, 'J_regressor_h36m.npy'))).float()
 
     for i, seq in tqdm(enumerate(sequences)):
@@ -165,7 +164,7 @@ if __name__ == '__main__':
 
     debug = False
 
-    dataset = read_data(args.dir, 'val', debug=debug)
+    dataset = read_data(args.dir, 'validation', debug=debug)
     joblib.dump(dataset, osp.join(VIBE_DB_DIR, '3dpw_val_db.pt'))
 
     dataset = read_data(args.dir, 'train', debug=debug)
