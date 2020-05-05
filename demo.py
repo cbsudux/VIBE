@@ -65,8 +65,8 @@ def main(args):
         if not os.path.isfile(image_file):
             exit(f'Input video \"{image_file}\" does not exist!')
 
-    # output_path = os.path.join(args.output_folder, os.path.basename(video_file).replace('.mp4', ''))
-    output_path = os.path.join(args.output_folder, os.path.basename(video_file).split('.')[0])
+    output_path = os.path.join(args.output_folder, os.path.basename(video_file).replace('.mp4', ''))
+    # output_path = os.path.join(args.output_folder, os.path.basename(video_file).split('.')[0])
     os.makedirs(output_path, exist_ok=True)
 
     image_folder, num_frames, img_shape = video_to_images(video_file, return_info=True)
@@ -275,7 +275,7 @@ def main(args):
         # prepare results for rendering
 
         from numpy import save
-        save(f'{video_file}_poses.npy', vibe_results[1]['joints3d'][:,:25,:])
+        save(f'{os.path.basename(video_file)}_poses.npy', vibe_results[1]['joints3d'][:,:25,:])
         print('Saving numpy poses file to' + f'{video_file}_poses.npy')
 
         frame_results = prepare_rendering_results(vibe_results, num_frames)  # returns a list of dicts (one dict for each person)
@@ -355,7 +355,7 @@ def main(args):
         images_to_video(img_folder=output_img_folder, output_vid_file=save_name)
         # shutil.rmtree(output_img_folder)
 
-    # shutil.rmtree(image_folder)
+    shutil.rmtree(image_folder)
     print('================= END =================')
 
 
