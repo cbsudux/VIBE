@@ -14,6 +14,24 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
+
+"""
+
+- Save render image with file_name_render.png
+- Save pose as file_name_pose.png
+
+Save in 2 separate folders (hardcode this for all files) - so when you run one by one, they don't create new folders 
+- 3dpw_renders
+- 3dpw_poses 
+
+will be way easier to analyse (file name is retained)
+
+
+
+"""
+
+
+
 import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
@@ -25,6 +43,7 @@ import shutil
 import colorsys
 import argparse
 import numpy as np
+import os.path as osp
 from tqdm import tqdm
 from multi_person_tracker import MPT
 from torch.utils.data import DataLoader
@@ -46,8 +65,6 @@ from lib.utils.demo_utils import (
     plot_skeleton
 )
 
-MIN_NUM_FRAMES = 25
-
 def main(args):
     if args.device == 'cpu':
         device = torch.device('cpu')
@@ -56,30 +73,33 @@ def main(args):
         device = torch.device('cuda')
         print('Running on GPU')
 
-    if args.vid_file:
-        video_file = args.vid_file
-        if not os.path.isfile(video_file):
-            exit(f'Input video \"{video_file}\" does not exist!')
-    else:
-        image_file = args.img_file
-        if not os.path.isfile(image_file):
-            exit(f'Input video \"{image_file}\" does not exist!')
+    image_file = args.img_file
 
-    output_path = os.path.join(args.output_folder, os.path.basename(video_file).replace('.mp4', ''))
-    # output_path = os.path.join(args.output_folder, os.path.basename(video_file).split('.')[0])
-    os.makedirs(output_path, exist_ok=True)
+    image_file = args.img_file
+    if not os.path.isfile(image_file):
+        exit(f'Input Image \"{image_file}\" does not exist!')
 
-    image_folder, num_frames, img_shape = video_to_images(video_file, return_info=True)
+    # output_path = os.path.join(args.output_folder, os.path.basename(image_file).replace('.jpg', ''))
+    # os.makedirs(output_path, exist_ok=True)
 
-    print(f'Input video number of frames {num_frames}')
-    orig_height, orig_width = img_shape[:2]
+
+
+    output_path = 'output/3dpw_outdoor_freestyle_00'
+    image_name = os.path.basename(image_file).replace('.jpg', '')
+
+
+    image_folder = osp.join('/tmp', osp.basename(image_file).replace('.', '_'))
+    os.makedirs(image_folder, exist_ok=True)
+
+    img = cv2.imread(image_file)
+
+    cv2.imwrite(os.path.join(image_folder, osp.basename(image_file)), img)
+    print(f'Images saved to \"{image_folder}\"')
+
+    orig_height, orig_width = img.shape[:2]
+    num_frames = 1
 
     total_time = time.time()
-
-
-    # resize video if too big
-    # ffmpeg -i input.avi -filter:v scale=720:-1 -c:a copy output.mkv
-   
 
     # ========= Run tracking ========= #
     bbox_scale = 1.1
@@ -99,12 +119,10 @@ def main(args):
         )
         tracking_results = mot(image_folder)
 
-    import pdb; pdb.set_trace
-
-    # remove tracklets if num_frames is less than MIN_NUM_FRAMES
-    for person_id in list(tracking_results.keys()):
-        if tracking_results[person_id]['frames'].shape[0] < MIN_NUM_FRAMES:
-            del tracking_results[person_id]
+    # # remove tracklets if num_frames is less than MIN_NUM_FRAMES
+    # for person_id in list(tracking_results.keys()):
+    #     if tracking_results[person_id]['frames'].shape[0] < MIN_NUM_FRAMES:
+    #         del tracking_results[person_id]
 
     # ========= Define VIBE model ========= #
     model = VIBE_Demo(
@@ -153,6 +171,7 @@ def main(args):
         dataloader = DataLoader(dataset, batch_size=args.vibe_batch_size, num_workers=16)
 
         with torch.no_grad():
+
             pred_cam, pred_verts, pred_pose, pred_betas, pred_joints3d, norm_joints2d = [], [], [], [], [], []
 
             for batch in dataloader:
@@ -171,7 +190,6 @@ def main(args):
                 pred_pose.append(output['theta'][:,:,3:75].reshape(batch_size * seqlen, -1))
                 pred_betas.append(output['theta'][:, :,75:].reshape(batch_size * seqlen, -1))
                 pred_joints3d.append(output['kp_3d'].reshape(batch_size * seqlen, -1, 3))
-
 
             pred_cam = torch.cat(pred_cam, dim=0)
             pred_verts = torch.cat(pred_verts, dim=0)
@@ -254,31 +272,26 @@ def main(args):
     print(f'Total time spent: {total_time:.2f} seconds (including model loading time).')
     print(f'Total FPS (including model loading time): {num_frames / total_time:.2f}.')
 
-    print(f'Saving output results to \"{os.path.join(output_path, "vibe_output.pkl")}\".')
-
-    joblib.dump(vibe_results, os.path.join(output_path, "vibe_output.pkl"))
+    # print(f'Saving output results to \"{os.path.join(output_path, "vibe_output.pkl")}\".')
+    # joblib.dump(vibe_results, os.path.join(output_path, "vibe_output.pkl"))
 
     if not args.no_render:
         # ========= Render results as a single video ========= #
         renderer = Renderer(resolution=(orig_width, orig_height), orig_img=True, wireframe=args.wireframe)
 
-        output_img_folder = f'{image_folder}_images'
-        os.makedirs(output_img_folder, exist_ok=True)
+        output_img_folder = output_path
+        # os.makedirs(output_img_folder, exist_ok=True)
 
+        # import pdb; pdb.set_trace()
         print(f'Rendering output video, writing frames to {output_img_folder}')
 
-        output_pose_folder = f'{image_folder}_poses'
-        os.makedirs(output_pose_folder, exist_ok=True)
+        # output_pose_folder = f'{output_path}_poses'
+        # os.makedirs(output_pose_folder, exist_ok=True)
 
-        print(f'Saving poses to {output_pose_folder}')
+        print(f'Saving poses to {output_img_folder}')
 
         # prepare results for rendering
-
-        from numpy import save
-        save(f'{os.path.basename(video_file)}_poses.npy', vibe_results[1]['joints3d'][:,:25,:])
-        print('Saving numpy poses file to' + f'{video_file}_poses.npy')
-
-        frame_results = prepare_rendering_results(vibe_results, num_frames)  # returns a list of dicts (one dict for each person)
+        frame_results = prepare_rendering_results(vibe_results, num_frames)
         mesh_color = {k: colorsys.hsv_to_rgb(np.random.rand(), 0.5, 1.0) for k in vibe_results.keys()}
 
         image_file_names = sorted([
@@ -308,7 +321,6 @@ def main(args):
                     os.makedirs(mesh_folder, exist_ok=True)
                     mesh_filename = os.path.join(mesh_folder, f'{frame_idx:06d}.obj')
 
-                # bgr image (opencv format)
                 img = renderer.render(
                     img,
                     frame_verts,
@@ -317,11 +329,7 @@ def main(args):
                     mesh_filename=mesh_filename,
                 )
 
-
-                # import pdb; pdb.set_trace()
-                # Create a 3D projection and save as img
-                # pose is mirrored
-                # plot_skeleton(output_pose_folder, frame_idx, frame_pose)
+                plot_skeleton(output_img_folder, image_name, frame_pose)
 
                 if args.sideview:
                     side_img = renderer.render(
@@ -336,8 +344,7 @@ def main(args):
             if args.sideview:
                 img = np.concatenate([img, side_img], axis=1)
 
-            # concatenate pose img with this image before writing
-            cv2.imwrite(os.path.join(output_img_folder, f'{frame_idx:06d}.png'), img)
+            cv2.imwrite(os.path.join(output_img_folder, 'renders', image_name + '.png'), img)
 
             if args.display:
                 cv2.imshow('Video', img)
@@ -347,26 +354,25 @@ def main(args):
         if args.display:
             cv2.destroyAllWindows()
 
-        # ========= Save rendered video ========= #
-        vid_name = os.path.basename(video_file)
-        save_name = f'{vid_name.replace(".mp4", "")}_vibe_result.mp4'
+        # ========= Save Image ========= #
+        image_name = os.path.basename(image_file)
+        save_name = f'{image_name.replace(".jpg", "")}_vibe_result.jpg'
         save_name = os.path.join(output_path, save_name)
         print(f'Saving result video to {save_name}')
-        images_to_video(img_folder=output_img_folder, output_vid_file=save_name)
+        # images_to_video(img_folder=output_img_folder, output_vid_file=save_name)
         # shutil.rmtree(output_img_folder)
 
     shutil.rmtree(image_folder)
-    print('================= END =================')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--vid_file', type=str,
-                        help='input video path or youtube link')
-
     parser.add_argument('--img_file', type=str,
-                        help='input image path or image link')
+                        help='input image path')
+
+    parser.add_argument('--img_folder', type=str,
+                        help='input image folder path')
 
     parser.add_argument('--output_folder', type=str,
                         help='output folder to write results')

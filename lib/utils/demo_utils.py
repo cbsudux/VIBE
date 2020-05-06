@@ -23,12 +23,130 @@ import subprocess
 import numpy as np
 import os.path as osp
 from pytube import YouTube
+from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
 from collections import OrderedDict
 
 from lib.utils.smooth_bbox import get_smooth_bbox_params, get_all_bbox_params
 from lib.data_utils.img_utils import get_single_image_crop_demo
 from lib.utils.geometry import rotation_matrix_to_angle_axis
 from lib.smplify.temporal_smplify import TemporalSMPLify
+
+
+joint_labels ={0: 'Nose', 1: 'Neck', 2: 'RShoulder', 3: 'RElbow', 4: 'RWrist', 5: 'LShoulder', 6: 'LElbow', 
+7: 'LWrist', 8: 'MidHip', 9: 'RHip', 10: 'RKnee', 11: 'RAnkle', 12: 'LHip', 13: 'LKnee', 14: 'LAnkle', 15: 'REye', 16: 'LEye', 
+17: 'REar', 18: 'LEar', 19: 'LBigToe', 20: 'LSmallToe', 21: 'LHeel', 22: 'RBigToe', 23: 'RSmallToe', 24: 'RHeel'}
+
+connections = [
+                [0,1],
+                [0,15],
+                [15,17],
+                [0,16],
+                [16,18],
+                [1,2],
+                [1,5],
+                [2,3],
+                [3,4],
+                [5,6],
+                [6,7],
+                [1,8],
+                [8,9],
+                [9,10],
+                [10,11],
+                [11,24],
+                [24,22],
+                [24,23],
+                [8,12],
+                [12,13],
+                [13,14],
+                [14,21],
+                [21,19],
+                [21,20]
+              ]
+
+
+def hconcat_resize_min(im_list, interpolation=cv2.INTER_CUBIC):
+    h_min = min(im.shape[0] for im in im_list)
+    im_list_resize = [cv2.resize(im, (int(im.shape[1] * h_min / im.shape[0]), h_min), interpolation=interpolation)
+                      for im in im_list]
+    return cv2.hconcat(im_list_resize)
+
+def combine_outputs(pose_dir, img_dir, render_dir):
+    for i in os.listdir(pose_dir): 
+        im1 = cv2.imread(os.path.join(img_dir, i.replace('.png','.jpg'))) 
+        im2 = cv2.imread(os.path.join(pose_dir,i)) 
+        im3 = cv2.imread(os.path.join(render_dir,i)) 
+
+        im_h_resize = hconcat_resize_min([im1, im2, im3], width = 550) 
+        cv2.imwrite('output/3dpw_outdoor_freestyle_00/output_combined/'+i, im_h_resize) 
+        print(i) 
+
+
+def update(frame_id):
+    joints3D = poses[frame_id][:25]
+
+    for i,pair in enumerate(connections):
+        j1 = pair[0]
+        j2 = pair[1]
+        lines_3d[i].set_xdata([joints3D[j1, 0], joints3D[j2, 0]])
+        lines_3d[i].set_ydata([joints3D[j1, 2], joints3D[j2, 2]])
+        lines_3d[i].set_3d_properties([joints3D[j1, 1], joints3D[j2, 1]], zdir = 'z')
+
+    return lines_3d,
+
+def animate_poses(poses, ):
+    poses = load('sample_video_poses.npy')
+
+    # number_of_frames = poses.shape[0] - 1 # Number of frames
+    number_of_frames = 300
+    fps = 60 # Frame per sec
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    ax.set_zlim(-1.5, 1)
+    ax.view_init(-170, 80) 
+    ax.invert_xaxis()
+
+    lines_3d = [plt.plot([],[],[], color='blue', linestyle='-', linewidth=2, marker='o', markersize=5)[0] for _ in range(len(connections))]
+
+    ani = animation.FuncAnimation(fig, update, number_of_frames, interval=1000/fps)
+
+    ani.save('basic_animation.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+
+
+
+def plot_skeleton(output_path, image_name, joints3D):
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    ax.set_zlim(-1.5, 1)
+
+    for pair in connections:
+        j1 = pair[0]
+        j2 = pair[1]
+        ax.plot([joints3D[j1, 0], joints3D[j2, 0]],
+                [joints3D[j1, 2], joints3D[j2, 2]],
+                [joints3D[j1, 1], joints3D[j2, 1]],
+                color='blue', linestyle='-', linewidth=2, marker='o', markersize=5)
+    # ax.view_init(-180, 60)
+    ax.view_init(-170, 80) 
+    ax.invert_xaxis()
+    savepath = os.path.join(output_path, 'poses', image_name + '.png')
+    plt.savefig(savepath, bbox_inches='tight', pad_inches=0)
+    # plt.clf()   
 
 
 def preprocess_video(video, joints2d, bboxes, frames, scale=1.0, crop_size=224):
@@ -266,6 +384,7 @@ def prepare_rendering_results(vibe_results, nframes):
             frame_results[frame_id][person_id] = {
                 'verts': person_data['verts'][idx],
                 'cam': person_data['orig_cam'][idx],
+                'joints3d': person_data['joints3d'][idx]
             }
 
     # naive depth ordering based on the scale of the weak perspective camera
