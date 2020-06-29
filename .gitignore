@@ -6,3 +6,4 @@ output/
 *.mp4
 results
 inputs/
+*.pyc
