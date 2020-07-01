@@ -116,6 +116,8 @@ if __name__ == '__main__':
     mean_bone_length[5:8] = mean_bone_length[2:5] # symmetric arms
     mean_bone_length[12:15] = mean_bone_length[9:12] # symmetric legs
     mean_bone_length[22:25] = mean_bone_length[19:22] # symmetric toes
+    mean_bone_length[16] = mean_bone_length[15] # symmetric eyes
+    mean_bone_length[18] = mean_bone_length[17] # symmetric ears
 
     print(mean_bone_length)
 
@@ -133,9 +135,6 @@ if __name__ == '__main__':
     WINDOW_SIZE = 5
     pad = WINDOW_SIZE // 2
     window_is_odd = int(WINDOW_SIZE % 2 == 1)
-    linsp = np.linspace(-1, 1., WINDOW_SIZE)
-    linsp[linsp>0] *= -1
-    ema_weights = np.exp(linsp)
 
     diff_pos = poses_3d[1:] - poses_3d[:-1]
     pos_window_avg = np.zeros_like(diff_pos)
