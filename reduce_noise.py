@@ -78,6 +78,7 @@ def visualize(poses_3d, FPS=24):
 
 
 if __name__ == '__main__':
+    import joblib
     np.set_printoptions(suppress=True, precision=4)
 
     joint_labels = {0: 'Nose', 1: 'Neck', 2: 'RShoulder', 3: 'RElbow', 4: 'RWrist', 5: 'LShoulder', 6: 'LElbow', 
@@ -87,9 +88,12 @@ if __name__ == '__main__':
 
     data_dir = "output/data"
     # animation_file = osp.join(data_dir, "outdoors_freestyle_00.mp4_poses.npy")
-    animation_file = osp.join(data_dir, "thatswhatilike_2_poses.npy")
+    # animation_file = osp.join(data_dir, "thatswhatilike_2_poses.npy")
 
-    poses_3d = np.load(animation_file)[200:]
+    # poses_3d = np.load(animation_file)[200:]
+
+    data = joblib.load('vibe_output_global.pkl')
+    poses_3d = data[0]['joints3d_new']
     # import pdb; pdb.set_trace()
     total_frames = poses_3d.shape[0]
     N = total_frames
@@ -100,6 +104,14 @@ if __name__ == '__main__':
     assert total_joints == poses_3d.shape[1]
 
     mean_bone_length = np.zeros(total_joints, dtype=np.float32)
+
+    root_j = 8 # midhip
+    root_pos = poses_3d[:,np.newaxis,root_j].copy()
+    poses_3d -= root_pos
+
+    # set first frame of rootpos to origin (0,0,0)
+    root_pos -= root_pos[0]
+    root_pos *= 0.8 # scale the root motion
 
     lines = connections
     for c in connections:
@@ -136,17 +148,29 @@ if __name__ == '__main__':
     pad = WINDOW_SIZE // 2
     window_is_odd = int(WINDOW_SIZE % 2 == 1)
 
-    diff_pos = poses_3d[1:] - poses_3d[:-1]
-    pos_window_avg = np.zeros_like(diff_pos)
+    pos_window_avg = np.zeros_like(poses_3d[1:] - poses_3d[:-1])
+    root_pos_window_avg = np.zeros_like(root_pos[1:] - root_pos[:-1])
 
-    for idx in range(len(diff_pos)):
+    for idx in range(len(pos_window_avg)):
         start = max(0, idx - pad)
         end = min(N, idx + pad + window_is_odd)
         pos_window_avg[idx] = np.mean(poses_3d[start:end], axis=0)
+        root_pos_window_avg[idx] = np.mean(root_pos[start:end], axis=0)
 
     poses_3d_copy = poses_3d.copy()
     poses_3d_copy[1:] = pos_window_avg
-    poses_3d_copy[:,:,1] += 1.
+    poses_3d[:,:,1] += 1.
 
-    visualize([poses_3d, poses_3d_copy])
+    # clamp the z factor
+    root_z = root_pos_window_avg[:,0,2]
+    N = len(root_z) // 4
+    from scipy.signal import savgol_filter
+    root_z[:] = savgol_filter(root_z, N if N % 2 != 0 else N-1, 2)
 
+    # add back root trajectory
+    poses_3d[1:] += root_pos_window_avg
+    poses_3d_copy[1:] += root_pos_window_avg
+
+    np.save("output/data/noise_reduce.npy", poses_3d_copy)
+
+    visualize([poses_3d, poses_3d_copy], 20)
